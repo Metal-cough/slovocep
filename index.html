@@ -965,18 +965,32 @@ function spendCr(n){ store().cr.b=Math.max(0,store().cr.b-n); save(); updateCr()
 // Платформа: ВКонтакте (VK Mini Apps). Реклама с наградой идет через VK Bridge, платных покупок в этой сборке нет.
 const VKQ=(()=>{ try{ return new URLSearchParams(location.search); }catch(e){ return new URLSearchParams(''); } })();
 const IN_VK=VKQ.has('vk_app_id')||VKQ.has('vk_platform');
+const ADQ={ready:false};
+async function adCheck(){
+  const b=window.vkBridge;
+  if(!IN_VK||!b||typeof b.send!=='function') return false;
+  try{ const c=await b.send('VKWebAppCheckNativeAds',{ad_format:'reward'}); ADQ.ready=!!(c&&c.result); }
+  catch(e){ ADQ.ready=false; }
+  return ADQ.ready;
+}
+// ВК советует заранее проверять наличие рекламы и повторять проверку по таймеру
+if(IN_VK){ setTimeout(()=>{ adCheck(); setInterval(()=>{ if(!ADQ.ready) adCheck(); },20000); },3000); }
 const PLAT={
   name:'vk',
   async rewardedAd(){
     const b=window.vkBridge;
-    if(!IN_VK||!b||typeof b.send!=='function'){ toast('Реклама сейчас недоступна'); return false; }
+    if(!IN_VK){ toast('Реклама работает только в ВКонтакте'); return false; }
+    if(!b||typeof b.send!=='function'){ toast('Нет связи с ВК. Обнови страницу'); return false; }
+    let ok=ADQ.ready||await adCheck();
+    if(!ok){ toast('Загружаю рекламу…'); await new Promise(r=>setTimeout(r,2500)); ok=await adCheck(); }
+    if(!ok){ toast('Реклама сейчас недоступна, попробуй позже'); return false; }
+    ADQ.ready=false;
     try{
-      const c=await b.send('VKWebAppCheckNativeAds',{ad_format:'reward'});
-      if(!c||!c.result){ toast('Реклама сейчас недоступна, попробуй позже'); return false; }
       const r=await b.send('VKWebAppShowNativeAds',{ad_format:'reward'});
+      setTimeout(adCheck,800);
       if(r&&r.result) return true;
       toast('Награда не получена: реклама не досмотрена'); return false;
-    }catch(e){ toast('Реклама не показана, попробуй позже'); return false; }
+    }catch(e){ toast('Реклама не показана, попробуй позже'); setTimeout(adCheck,2000); return false; }
   },
   buy(n){ return Promise.resolve(false); }
 };
@@ -1209,11 +1223,11 @@ function confirmExit(){
 }
 async function doShare(text){
   if(IN_VK&&window.vkBridge&&typeof vkBridge.send==='function'){
-    try{
-      const id=VKQ.get('vk_app_id'), link=id?('https://vk.com/app'+id):'';
-      await vkBridge.send('VKWebAppShowWallPostBox',link?{message:text+'\n'+link,attachments:link}:{message:text});
-      return;
-    }catch(e){ if(e&&e.error_data&&e.error_data.error_code===4) return; }
+    const id=VKQ.get('vk_app_id'), link=id?('https://vk.com/app'+id):'';
+    try{ await vkBridge.send('VKWebAppShare',link?{link:link,text:text}:{text:text}); return; }
+    catch(e){ if(e&&e.error_data&&e.error_data.error_code===4) return; }
+    try{ const r=await vkBridge.send('VKWebAppCopyText',{text:text+(link?'\n'+link:'')}); if(r&&r.result){ toast('Результат скопирован'); return; } }
+    catch(e){}
   }
   try{ if(navigator.share){ await navigator.share({text}); return; } }
   catch(e){ if(e&&e.name==='AbortError') return; }
