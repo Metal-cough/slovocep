@@ -1434,7 +1434,8 @@ function showMenu(){
     '<button class="btn big" id="m-board">🏆 Таблица лидеров</button>'+
     '<div class="actions"><button class="btn big" id="m-levels">Все уровни</button><button class="btn big" id="m-bonus">🎁 Бонус '+memeCount()+'/'+MEMES.length+'</button></div>'+
     '<div class="actions"><button class="btn" id="m-shop">💎 Кристаллы · '+crystals()+'</button><button class="btn" id="m-help">Как играть</button></div>'+
-    (playing?'<button class="btn" id="m-back">Вернуться к игре</button>':''),
+    (playing?'<button class="btn" id="m-back">Вернуться к игре</button>':'')+
+    '<div class="actions" style="justify-content:center"><button class="ghost" id="m-support" type="button">Поддержка</button></div>',
     ()=>{
       $('#m-theme').onclick=toggleTheme; syncThemeBtns();
       const c=$('#m-cont');
@@ -1453,8 +1454,37 @@ function showMenu(){
       $('#m-bonus').onclick=showBonus;
       $('#m-shop').onclick=()=>showShop('menu');
       $('#m-help').onclick=()=>showHelp(true);
+      $('#m-support').onclick=showSupport;
       const b=$('#m-back'); if(b) b.onclick=()=>{ closeSheet(); focusInp(); };
       sheetEsc=()=>{ if(S&&!S.done){ closeSheet(); focusInp(); } };
+    }
+  );
+}
+// Поддержка: почта разработчика (собирается из частей, чтобы адрес не лежал в коде одной строкой)
+const SUP_MAIL=['maxim230889','gmail.com'].join('@');
+const POLICY_URL='https://metal-cough.github.io/slovocep/privacy.html';
+async function copyText(t){
+  if(IN_VK&&window.vkBridge&&typeof vkBridge.send==='function'){
+    try{ const r=await vkBridge.send('VKWebAppCopyText',{text:t}); if(r&&r.result) return true; }catch(e){}
+  }
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText){ await navigator.clipboard.writeText(t); return true; } }catch(e){}
+  try{ const ta=document.createElement('textarea'); ta.value=t; ta.setAttribute('readonly',''); ta.style.cssText='position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta); ta.select(); const ok=document.execCommand('copy'); ta.remove(); return !!ok; }catch(e){}
+  return false;
+}
+function showSupport(){
+  openPage(
+    '<h2>Поддержка</h2>'+
+    '<p>Нашел ошибку, хочешь предложить слово или идею? Напиши на почту — постараюсь ответить в течение нескольких дней.</p>'+
+    '<p class="supmail"><b>'+SUP_MAIL+'</b></p>'+
+    '<div class="actions"><button class="btn" id="su-copy" type="button">Скопировать адрес</button>'+
+    '<a class="btn" id="su-mail" href="mailto:'+SUP_MAIL+'?subject=%D0%A1%D0%BB%D0%BE%D0%B2%D0%BE%D1%86%D0%B5%D0%BF%D1%8C" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none;color:inherit">Написать</a></div>'+
+    '<p class="fine" style="margin-top:2px;font-size:14px;opacity:.8">Прогресс хранится на этом устройстве. <a href="'+POLICY_URL+'" target="_blank" rel="noopener" id="su-policy" style="color:inherit;text-decoration:underline">Политика конфиденциальности</a></p>'+
+    '<button class="btn primary" id="su-back" type="button">Назад</button>',
+    ()=>{
+      const out=()=>showMenu();
+      $('#su-back').onclick=out; sheetEsc=out;
+      $('#su-copy').onclick=async()=>{ toast((await copyText(SUP_MAIL))?'Адрес скопирован':'Не удалось скопировать: '+SUP_MAIL); };
     }
   );
 }
