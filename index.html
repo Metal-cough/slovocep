@@ -395,7 +395,7 @@ function markProgress(k){ const e=$('#progress').children[k]; if(e) e.classList.
 // ---------- новая игра / шаг ----------
 function loadChain(ch,ms0){
   CH=ch;
-  S={i:1,locked:1,hints:Array(CH.length-1).fill(0),ch:Array(CH.length-1).fill(0),busy:false,done:false,frozen:''};
+  S={i:1,locked:1,hl:[],hints:Array(CH.length-1).fill(0),ch:Array(CH.length-1).fill(0),busy:false,done:false,frozen:''};
   timerReset(ms0);
   stage.classList.remove('leaving');
   $('#lbl').textContent=gameTitle();
@@ -413,7 +413,7 @@ function describe(){
   stage.setAttribute('aria-label','Слово в центре «'+CH[S.i-1].base+'». Загаданное слово стоит '+(cur().dir==='l'?'перед':'после')+' него, букв: '+ans().length+', первая «'+ans()[0]+'»');
 }
 function initInput(){
-  const a=ans(); S.locked=1; S.abc={}; S.abc[norm(a[0])]='g'; S.last=null; renderLast();
+  const a=ans(); S.locked=1; S.hl=[]; S.abc={}; S.abc[norm(a[0])]='g'; S.last=null; renderLast();
   inp.value=a[0]; S.frozen=inp.value;
   caretEnd();
   renderTarget();
@@ -426,7 +426,7 @@ function renderTarget(){
   for(let k=0;k<a.length;k++){
     const ch=v[k]||'';
     let cls='';
-    if(k===0) cls='reveal'; else if(k<S.locked) cls='locked'; else if(ch) cls='typed';
+    if(k===0) cls='reveal'; else if(k<S.locked) cls=S.hl.indexOf(k)>=0?'locked':'ok'; else if(ch) cls='typed';
     if(k===cursor && !S.busy) cls+=' cursor';
     targetEl.appendChild(makeTile(ch,cls));
   }
@@ -948,7 +948,7 @@ function hintAction(){
   const st=hintState();
   if(st==='none'){ showNoHints(); return; }
   if(st==='paid'){ spendCr(HINT_COST); S.ch[i]=(S.ch[i]||0)+1; } else S.hints[i]=(S.hints[i]||0)+1;
-  inp.value=a.slice(0,k+1); S.locked=k+1;
+  inp.value=a.slice(0,k+1); S.locked=k+1; S.hl.push(k);   // цветом подсказки выделяется только новая буква; верно введенные до нее фиксируются зеленым
   onHint(st==='paid');
   caretEnd(); renderTarget();
 }
@@ -1207,16 +1207,29 @@ function onGameEsc(e){
   if(S.done){ showMenu(); return; }
   confirmExit();
 }
+// Выход из бесконечного режима (Esc или ☰) завершает забег: результат записывается, продолжить его потом нельзя.
+// Если слов еще нет, записывать нечего — просто в меню.
+function confirmLeaveEndless(){
+  if(EN.n===0){ store().en.run=null; save(); showMenu(); return; }
+  const stay=()=>{ closeSheet(); focusInp(); };
+  openSheet(
+    '<h2>Выйти из забега?</h2>'+kv(EN.n,EN.h,null,scoreOf(EN.n,EN.h))+
+    '<p>Забег закончится, а результат запишется. Продолжить его потом не получится.</p>'+
+    '<div class="actions"><button class="btn" id="ex-no">Остаться</button><button class="btn primary" id="ex-yes">Завершить</button></div>',
+    ()=>{ $('#ex-no').onclick=stay; $('#ex-yes').onclick=finishEndless; sheetEsc=stay; }
+  );
+}
 function confirmExit(){
+  if(GAME&&GAME.mode==='e'){ confirmLeaveEndless(); return; }
   const en=!!(GAME&&GAME.mode==='e'), bn=!!(GAME&&GAME.mode==='m'), re=!en&&!bn;     // re: в уровне и цепочке дня можно начать цепочку заново
   const stay=()=>{ closeSheet(); focusInp(); };
   openSheet(
     '<h2>Выйти в меню?</h2>'+
-    '<p>'+(en?'Забег сохранится: продолжишь с того же места.':bn?(GAME.src==='e'?'Бонус пропустится, а забег сохранится: продолжишь с того же места.':'Бонус пропустится. Получить его можно позже, пройдя этот уровень еще раз.'):'Эта цепочка останется: вернуться к ней можно из меню.')+'</p>'+
+    '<p>'+(en?'Забег сохранится: продолжишь с того же места.':bn?(GAME.src==='e'?'Бонус пропустится, а забег закончится: его результат запишется.':'Бонус пропустится. Получить его можно позже, пройдя этот уровень еще раз.'):'Эта цепочка останется: вернуться к ней можно из меню.')+'</p>'+
     '<div class="actions"><button class="btn" id="ex-no">Остаться</button><button class="btn primary" id="ex-yes">В меню</button></div>'+
     (re?'<button class="btn" id="ex-re">Начать заново</button>':''),
     ()=>{
-      $('#ex-no').onclick=stay; $('#ex-yes').onclick=()=>{ if(en) endlessSave(); showMenu(); }; sheetEsc=stay;
+      $('#ex-no').onclick=stay; $('#ex-yes').onclick=()=>{ if(bn&&GAME.src==='e') closeStoredRun(); showMenu(); }; sheetEsc=stay;
       if(re) $('#ex-re').onclick=()=>{ closeSheet(); loadChain(CH); focusInp(); };
     }
   );
@@ -1353,14 +1366,26 @@ function confirmFinish(){
     ()=>{ const stay=()=>{ closeSheet(); focusInp(); }; $('#fc-no').onclick=stay; $('#fc-yes').onclick=finishEndless; sheetEsc=stay; }
   );
 }
-function finishEndless(){
-  const st=store(), res={n:EN.n,h:EN.h,ms:Math.round(tNow()),score:scoreOf(EN.n,EN.h),ts:Date.now()};
-  S.done=true; syncTimer();
+// Запись результата забега: сохраненный забег закрывается, рекорд и таблица обновляются. Возвращает true, если это новый личный рекорд.
+function commitRun(res){
+  const st=store();
   st.en.run=null;
   const rec=res.n>0&&res.score>st.en.bestScore;
   if(rec) st.en.bestScore=res.score;
   if(res.n>0){ localTop(res); st.en.pending=res.n>=MIN_SUBMIT?res:null; }
   save();
+  return rec;
+}
+// Выход из бонуса, который предложили посреди забега: забег тоже завершается (результат берем из сохраненного).
+function closeStoredRun(){
+  const st=store(), r=st.en.run;
+  if(r&&r.n>0){ commitRun({n:r.n,h:r.h,ms:r.ms,score:scoreOf(r.n,r.h),ts:Date.now()}); toast('Забег завершен: '+r.n+' '+plural(r.n,['слово','слова','слов']),3200); }
+  else { st.en.run=null; save(); }
+}
+function finishEndless(){
+  const st=store(), res={n:EN.n,h:EN.h,ms:Math.round(tNow()),score:scoreOf(EN.n,EN.h),ts:Date.now()};
+  S.done=true; syncTimer();
+  const rec=commitRun(res);
   const ok=res.n>=MIN_SUBMIT;
   openSheet(
     '<h2>Забег завершен</h2>'+kv(res.n,res.h,res.ms,res.score)+
@@ -1447,7 +1472,7 @@ function showMenu(){
       };
       $('#m-endless').onclick=()=>{
         if(inProgress('e')){ closeSheet(); focusInp(); return; }
-        showTip('endless','Бесконечный режим','Цепочка не кончается: играй сколько хочешь, а потом жми «Финиш» — результат сохранится в твоих рекордах. Очки растут с числом угаданных слов и заметно падают с каждой открытой буквой.',()=>{ closeSheet(); startEndless(false); focusInp(); });
+        showTip('endless','Бесконечный режим','Цепочка не кончается: играй сколько хочешь, а потом жми «Финиш» — результат сохранится в твоих рекордах. Выход в меню тоже завершает забег. Очки растут с числом угаданных слов и заметно падают с каждой открытой буквой.',()=>{ closeSheet(); startEndless(false); focusInp(); });
       };
       $('#m-board').onclick=showBoard;
       $('#m-levels').onclick=showLevels;
@@ -1575,7 +1600,7 @@ stage.addEventListener('click',()=>{ if(sheet.hidden){ inp.focus(); caretEnd(); 
 $('#btn-hint').onclick=()=>{ hint(); inp.focus(); caretEnd(); };
 btnCheck.onclick=()=>{ check(); inp.focus(); caretEnd(); };
 $('#btn-new').onclick=onNewBtn;
-$('#btn-menu').onclick=()=>{ if(S&&S.busy) return; showMenu(); };
+$('#btn-menu').onclick=()=>{ if(S&&S.busy) return; if(GAME&&GAME.mode==='e'&&!S.done){ confirmLeaveEndless(); return; } if(GAME&&GAME.mode==='m'&&GAME.src==='e'&&!S.done){ confirmExit(); return; } showMenu(); };
 $('#st-cr').onclick=()=>{ if(S&&S.busy) return; showShop('game'); };
 $('#btn-theme').onclick=toggleTheme;
 let rt=null;
