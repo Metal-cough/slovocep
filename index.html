@@ -42,6 +42,7 @@ body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font-family:
   -webkit-tap-highlight-color:transparent;touch-action:manipulation;overflow-x:hidden}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 button:focus-visible{outline:3px solid var(--reveal);outline-offset:2px}
+.lv:focus-visible{outline:3px solid var(--ink);outline-offset:3px}
 
 .app{max-width:480px;margin:0 auto;padding:10px 8px 18px;display:flex;flex-direction:column;align-items:center;gap:12px}
 @media (min-width:680px){ .app{max-width:1100px} }
@@ -1190,12 +1191,46 @@ function closeSheet(){ sheet.hidden=true; sheet.classList.remove('home'); sheetE
 // Страница меню на весь экран (главное меню, уровни, бонус, таблица, правила). Всплывающие окна (итоги, вопросы) остаются карточками поверх игры.
 const openPage=(html,bind,wide)=>openSheet(html,bind,wide,true);
 // Клавиатура. В открытом окне: Enter — главная кнопка окна, Esc — «назад»/«отмена». В игре: Esc — вопрос «Выйти в меню?».
+// Стрелки в окне и меню: фокус переходит к ближайшей кнопке в нужную сторону (вверх/вниз по списку, влево/вправо по ряду и сетке уровней).
+function navArrows(key){
+  const items=[...sheetCard.querySelectorAll('button:not([disabled]),a[href],input[type=checkbox]')].filter(el=>el.getClientRects().length);
+  if(!items.length) return false;
+  const go=el=>{ el.focus(); try{ el.scrollIntoView({block:'nearest'}); }catch(_){} return true; };
+  const a=document.activeElement, cur=items.indexOf(a)>=0?a:null;
+  const back=key==='ArrowUp'||key==='ArrowLeft';
+  if(!cur) return go(back?items[items.length-1]:(sheetCard.querySelector('.btn.primary')||sheetCard.querySelector('.lv.cur')||items[0]));
+  const dx=key==='ArrowRight'?1:key==='ArrowLeft'?-1:0, dy=key==='ArrowDown'?1:key==='ArrowUp'?-1:0;
+  const r=cur.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2;
+  const c=[];
+  for(const el of items){
+    if(el===cur) continue;
+    const q=el.getBoundingClientRect(), x=q.left+q.width/2-cx, y=q.top+q.height/2-cy;
+    const along=x*dx+y*dy, across=Math.abs(dx?y:x);
+    if(along<=4) continue;
+    if(dx&&across>Math.max(q.height,r.height)*0.6) continue;       // влево/вправо — только по тому же ряду
+    c.push({el,along,across});
+  }
+  let best=null;
+  if(c.length){
+    const near=Math.min(...c.map(o=>o.along));
+    // вверх/вниз: сначала ближайший ряд, в нем — кнопка, ближе всего по горизонтали
+    const pool=dx?c:c.filter(o=>o.along<=near+Math.max(14,r.height*0.5));
+    best=pool.reduce((m,o)=>((dx?o.along<m.along:o.across<m.across||(o.across===m.across&&o.along<m.along))?o:m)).el;
+  }
+  if(best) return go(best);
+  if(dy) return go(back?items[items.length-1]:items[0]);     // вверх с первой кнопки — на последнюю, вниз с последней — на первую
+  return true;
+}
 function onSheetKey(e){
-  if(e.repeat) return;                       // зажатая клавиша не должна проскакивать через несколько окон подряд
+  if(e.repeat&&e.key!=='ArrowUp'&&e.key!=='ArrowDown'&&e.key!=='ArrowLeft'&&e.key!=='ArrowRight') return;   // зажатая клавиша не должна проскакивать через несколько окон подряд
   if(e.key==='Escape'){ e.preventDefault(); if(sheetEsc) sheetEsc(); return; }
+  if(e.key==='ArrowUp'||e.key==='ArrowDown'||e.key==='ArrowLeft'||e.key==='ArrowRight'){
+    if(navArrows(e.key)) e.preventDefault();
+    return;
+  }
   if(e.key==='Enter'){
     const a=document.activeElement;
-    try{ if(a&&a.tagName==='BUTTON'&&sheetCard.contains(a)&&a.matches(':focus-visible')) return; }catch(_){}   // кнопка выбрана с клавиатуры — пусть нажмется она
+    try{ if(a&&(a.tagName==='BUTTON'||a.tagName==='A')&&sheetCard.contains(a)&&a.matches(':focus-visible')) return; }catch(_){}   // кнопка выбрана с клавиатуры — пусть нажмется она
     const b=sheetCard.querySelector('.btn.primary')||sheetCard.querySelector('.lv.cur');
     if(b){ e.preventDefault(); b.click(); }
   }
