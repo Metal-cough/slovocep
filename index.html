@@ -1389,7 +1389,7 @@ async function showBoard(){
   const pend=st.en.pending;
   openPage(
     '<h2>Мои рекорды</h2>'+
-    '<div class="sub">∞ Бесконечный режим'+''+'</div>'+
+    '<div class="sub" style="text-align:center">∞ Бесконечный режим'+''+'</div>'+
     (b.src==='local'?'<p>Здесь твои лучшие результаты на этом устройстве.</p>':'')+
     (pend&&b.src==='db'?'<p>Последний забег еще не записан:</p>'+submitFormHtml(pend):'')+
     (b.rows.length?'<div class="board">'+head+rows+'</div>':'<p>Пока нет результатов. Сыграй в бесконечном режиме, и рекорд появится здесь.</p>')+
