@@ -1348,7 +1348,7 @@ function bindSubmit(res){
 function confirmFinish(){
   openSheet(
     '<h2>Завершить забег?</h2>'+kv(EN.n,EN.h,null,scoreOf(EN.n,EN.h))+
-    '<p>Цепочка закончится, а результат можно записать в таблицу лидеров.</p>'+
+    '<p>Цепочка закончится, а результат сохранится в твоих рекордах.</p>'+
     '<div class="actions"><button class="btn" id="fc-no">Играть дальше</button><button class="btn primary" id="fc-yes">Завершить</button></div>',
     ()=>{ const stay=()=>{ closeSheet(); focusInp(); }; $('#fc-no').onclick=stay; $('#fc-yes').onclick=finishEndless; sheetEsc=stay; }
   );
@@ -1365,8 +1365,8 @@ function finishEndless(){
   openSheet(
     '<h2>Забег завершен</h2>'+kv(res.n,res.h,res.ms,res.score)+
     (rec?'<p>🏆 Новый личный рекорд!</p>':res.n>0?'<p>Личный рекорд: '+st.en.bestScore+' '+plural(st.en.bestScore,['очко','очка','очков'])+'</p>':'')+
-    (ok?'<p>Запиши результат в таблицу лидеров:</p>'+submitFormHtml(res):'<p>Чтобы попасть в таблицу, нужно угадать хотя бы '+MIN_SUBMIT+' '+plural(MIN_SUBMIT,['слово','слова','слов'])+'.</p>')+
-    '<button class="btn" id="board">Таблица лидеров</button>'+
+    (ok?'<p>Запиши результат в рекорды:</p>'+submitFormHtml(res):'<p>Чтобы записать рекорд, нужно угадать хотя бы '+MIN_SUBMIT+' '+plural(MIN_SUBMIT,['слово','слова','слов'])+'.</p>')+
+    '<button class="btn" id="board">Мои рекорды</button>'+
     '<div class="actions"><button class="btn" id="tomenu">В меню</button><button class="btn'+(ok?'':' primary')+'" id="again">Новый забег</button></div>',
     ()=>{
       bindSubmit(res);
@@ -1379,7 +1379,7 @@ function finishEndless(){
 }
 async function showBoard(){
   const st=store();
-  openPage('<h2>Таблица лидеров</h2><p>Загрузка…</p><button class="btn" id="bd-back">Назад</button>',()=>{ $('#bd-back').onclick=showMenu; sheetEsc=showMenu; },true);
+  openPage('<h2>Мои рекорды</h2><p>Загрузка…</p><button class="btn" id="bd-back">Назад</button>',()=>{ $('#bd-back').onclick=showMenu; sheetEsc=showMenu; },true);
   const b=await loadBoard();
   if(sheet.hidden||!sheetCard.querySelector('#bd-back')) return;     // пока грузили, закрыли окно
   const medal=['🥇','🥈','🥉'];
@@ -1388,11 +1388,11 @@ async function showBoard(){
     '<div class="r'+(r.me?' me':'')+'"><span>'+(medal[i]||(i+1))+'</span><span class="nm">'+esc(r.name)+'</span><span class="num">'+r.n+'</span><span class="num">'+r.h+'</span><span class="num">'+fmtTime(r.ms)+'</span><span class="num"><b>'+r.score+'</b></span></div>').join('');
   const pend=st.en.pending;
   openPage(
-    '<h2>Таблица лидеров</h2>'+
-    '<div class="sub">∞ Бесконечный режим'+(b.src==='local'?' · только этот телефон':'')+'</div>'+
-    (b.src==='local'?'<p>Общая таблица сейчас недоступна, показаны результаты на этом устройстве.</p>':'')+
+    '<h2>Мои рекорды</h2>'+
+    '<div class="sub">∞ Бесконечный режим'+''+'</div>'+
+    (b.src==='local'?'<p>Здесь твои лучшие результаты на этом устройстве.</p>':'')+
     (pend&&b.src==='db'?'<p>Последний забег еще не записан:</p>'+submitFormHtml(pend):'')+
-    (b.rows.length?'<div class="board">'+head+rows+'</div>':'<p>Пока никого нет. Сыграй в бесконечном режиме и стань первым!</p>')+
+    (b.rows.length?'<div class="board">'+head+rows+'</div>':'<p>Пока нет результатов. Сыграй в бесконечном режиме, и рекорд появится здесь.</p>')+
     '<p class="note">Очки = 10 × (слова − подсказки)² ÷ слова. Чем меньше подсказок, тем больше очков. Время только для справки.</p>'+
     '<div class="actions"><button class="btn" id="bd-back">Назад</button><button class="btn primary" id="bd-play">Играть</button></div>',
     ()=>{
@@ -1431,7 +1431,7 @@ function showMenu(){
     (ni>=0?'<button class="btn primary big" id="m-cont">'+(done||inProgress('c')?'Продолжить · ':'Играть · ')+CAMP[ni].title+'</button>':'')+
     '<button class="btn big" id="m-daily">Цепочка дня'+(dd?' ✓':'')+'</button>'+
     '<button class="btn big'+(ni<0?' primary':'')+'" id="m-endless">∞ Бесконечный режим'+(enLabel?' · '+enLabel+' '+plural(enLabel,['слово','слова','слов']):'')+'</button>'+
-    '<button class="btn big" id="m-board">🏆 Таблица лидеров</button>'+
+    '<button class="btn big" id="m-board">🏆 Мои рекорды</button>'+
     '<div class="actions"><button class="btn big" id="m-levels">Все уровни</button><button class="btn big" id="m-bonus">🎁 Бонус '+memeCount()+'/'+MEMES.length+'</button></div>'+
     '<div class="actions"><button class="btn" id="m-shop">💎 Кристаллы · '+crystals()+'</button><button class="btn" id="m-help">Как играть</button></div>'+
     (playing?'<button class="btn" id="m-back">Вернуться к игре</button>':'')+
@@ -1447,7 +1447,7 @@ function showMenu(){
       };
       $('#m-endless').onclick=()=>{
         if(inProgress('e')){ closeSheet(); focusInp(); return; }
-        showTip('endless','Бесконечный режим','Цепочка не кончается: играй сколько хочешь, а потом жми «Финиш» — результат попадет в таблицу лидеров. Очки растут с числом угаданных слов и заметно падают с каждой открытой буквой.',()=>{ closeSheet(); startEndless(false); focusInp(); });
+        showTip('endless','Бесконечный режим','Цепочка не кончается: играй сколько хочешь, а потом жми «Финиш» — результат сохранится в твоих рекордах. Очки растут с числом угаданных слов и заметно падают с каждой открытой буквой.',()=>{ closeSheet(); startEndless(false); focusInp(); });
       };
       $('#m-board').onclick=showBoard;
       $('#m-levels').onclick=showLevels;
