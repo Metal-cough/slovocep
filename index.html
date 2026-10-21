@@ -194,6 +194,7 @@ h1{margin:0;font-family:var(--f-head);font-weight:800;font-size:15px;letter-spac
 .brand .demo.logo b{padding-right:28px}
 .brand .demo.logo i{padding-left:28px}
 .brand .demo.logo .lk{position:relative;z-index:1;flex:none;width:28px;height:15px;margin:0 -14px;border:4px solid var(--ink);border-radius:9px;opacity:.9}
+.ver{margin:4px 0 0;text-align:center;font-size:12px;font-weight:700;letter-spacing:.04em;color:var(--muted);opacity:.7}
 .brand .tag{margin:-2px 0 0;font-family:var(--f-head);font-weight:800;font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:var(--muted)}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .chk{display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;color:var(--muted);font-weight:800;cursor:pointer;padding:4px;user-select:none;-webkit-user-select:none}
@@ -475,6 +476,7 @@ async function success(){
   fillWord(targetEl,w.form,'ok');
   btnCheck.disabled=true;
   markProgress(S.i);
+  adStepDone();
   await sleep(700);
   await morph(w);
   if(GAME.mode==='e'){
@@ -568,7 +570,8 @@ async function morph(w){
 const LS_KEY='chain3.v2';
 // Кристаллы. Подсказка стоит HINT_COST; пока кристаллов хватает, подсказки идут за них и очки не снижают.
 // Когда кристаллы кончились, на слово остается FREE_HINTS бесплатных подсказок — они очки снижают.
-const START_CR=15, HINT_COST=5, EVENT_CR=3, DAILY_CR=10, DAILY_NOHINT_CR=5, AD_CR=3, FREE_HINTS=1, PACKS=[5,15,30,50,100];
+const APP_VER='1.1';      // версия сборки: видна внизу главного меню, чтобы сверять, что обновление дошло
+const START_CR=15, HINT_COST=5, EVENT_CR=3, DAILY_CR=10, DAILY_NOHINT_CR=5, AD_CR=3, AD_GAP=2, FREE_HINTS=1, PACKS=[5,15,30,50,100];
 let STORE=null;
 function store(){
   if(STORE) return STORE;
@@ -581,6 +584,7 @@ function store(){
   if(!STORE.cr||typeof STORE.cr!=='object'||Array.isArray(STORE.cr)) STORE.cr={};
   STORE.cr.b=(typeof STORE.cr.b==='number'&&isFinite(STORE.cr.b))?Math.max(0,Math.floor(STORE.cr.b)):START_CR;     // у старых сохранений кристаллов не было: начальные START_CR
   if(!STORE.cr.lv||typeof STORE.cr.lv!=='object'||Array.isArray(STORE.cr.lv)) STORE.cr.lv={};       // уровни, за которые кристаллы уже выданы
+  STORE.adLeft=(typeof STORE.adLeft==='number'&&isFinite(STORE.adLeft))?Math.max(0,Math.min(AD_GAP,Math.floor(STORE.adLeft))):0;     // слов до следующей рекламы за кристаллы
   if(!Array.isArray(STORE.rc)) STORE.rc=[];      // недавние выражения кампании: новые цепочки по возможности их обходят
   const en=STORE.en||{};
   STORE.en={run:en.run||null, pending:en.pending||null, top:Array.isArray(en.top)?en.top:[], bestScore:en.bestScore||0};
@@ -995,20 +999,26 @@ const PLAT={
   },
   buy(n){ return Promise.resolve(false); }
 };
+// Реклама за кристаллы доступна не подряд: после награды нужно отгадать еще AD_GAP слов (счет идет в success()).
+const adLeft=()=>store().adLeft||0;
+function adStepDone(){ const st=store(); if(st.adLeft>0){ st.adLeft--; save(); } }
+const adWait=()=>{ const n=adLeft(); return 'Реклама снова будет доступна через '+n+' '+plural(n,['слово','слова','слов']); };
+const adBtn=id=>adLeft()>0?'<button class="btn big" id="'+id+'" disabled>Реклама будет через '+adLeft()+' '+plural(adLeft(),['слово','слова','слов'])+'</button>':'<button class="btn primary big" id="'+id+'">Смотреть рекламу · +💎'+AD_CR+'</button>';
 async function watchAd(after){
+  if(adLeft()>0){ toast(adWait()); after(false); return; }
   const ok=await PLAT.rewardedAd();
-  if(ok){ addCr(AD_CR); toast('+💎'+AD_CR); }
+  if(ok){ addCr(AD_CR); store().adLeft=AD_GAP; save(); toast('+💎'+AD_CR); }
   after(ok);
 }
 function showNoHints(){
   const stay=()=>{ closeSheet(); focusInp(); };
   openSheet(
     '<h2>Нужны кристаллы</h2>'+
-    '<p>Подсказка стоит 💎'+HINT_COST+', у тебя 💎'+crystals()+'. Посмотри рекламу — получишь 💎'+AD_CR+'.</p>'+
-    '<button class="btn primary big" id="nh-ad">Смотреть рекламу · +💎'+AD_CR+'</button>'+
-    '<div class="actions"><button class="btn" id="nh-back">Назад</button><button class="btn" id="nh-shop">Магазин</button></div>',
+    '<p>Подсказка стоит 💎'+HINT_COST+', у тебя 💎'+crystals()+'. '+(adLeft()>0?'Отгадай еще несколько слов, и кристаллы за рекламу снова можно будет получить.':'Посмотри рекламу — получишь 💎'+AD_CR+'.')+'</p>'+
+    adBtn('nh-ad')+
+    '<div class="actions"><button class="btn'+(adLeft()>0?' primary':'')+'" id="nh-back">Назад</button><button class="btn" id="nh-shop">Магазин</button></div>',
     ()=>{
-      $('#nh-ad').onclick=()=>watchAd(()=>{ if(crystals()>=HINT_COST){ stay(); toast('Теперь хватает на подсказку'); } else showNoHints(); });
+      $('#nh-ad').onclick=()=>watchAd(ok=>{ if(ok){ stay(); if(crystals()>=HINT_COST) toast('Теперь хватает на подсказку'); } else showNoHints(); });
       $('#nh-back').onclick=stay; $('#nh-shop').onclick=()=>showShop('game'); sheetEsc=stay;
     }
   );
@@ -1020,13 +1030,13 @@ function showShop(from){
     '<h2>Кристаллы</h2>'+
     '<div class="bal">💎 '+crystals()+'</div>'+
     (tipOff('shop')?'':'<div class="tip" id="tip-shop-box"><p>Подсказка стоит 💎'+HINT_COST+' и очки не снижает. Когда кристаллов не хватает, остается одна бесплатная подсказка на слово, но она очки снижает. Кристаллы дают: за цепочку дня '+DAILY_CR+' (еще '+DAILY_NOHINT_CR+', если без подсказок), за уровень без подсказок '+EVENT_CR+', за каждый мем '+EVENT_CR+', за рекламу '+AD_CR+'.</p>'+tipBox('shop')+'</div>')+
-    '<button class="btn primary big" id="sh-ad">Смотреть рекламу · +💎'+AD_CR+'</button>'+
+    adBtn('sh-ad')+
     ''+
     (PLAT.name==='test'?'<p class="note">Тестовая версия: покупки пока бесплатные. Цены появятся при публикации.</p>':'')+
     '<button class="btn" id="sh-back">Назад</button>',
     ()=>{
       $('#sh-back').onclick=back; sheetEsc=back;
-      $('#sh-ad').onclick=()=>watchAd(()=>showShop(from));
+      $('#sh-ad').onclick=()=>watchAd(ok=>{ if(ok) back(); else showShop(from); });
       sheetCard.querySelectorAll('.pack').forEach(b=>b.onclick=async()=>{ const n=+b.dataset.n; if(await PLAT.buy(n)){ addCr(n); toast('+💎'+n); showShop(from); } });
       const c=document.getElementById('tip-shop'); if(c) c.onchange=()=>{ tipSave('shop'); $('#tip-shop-box').hidden=true; };
     }
@@ -1495,7 +1505,8 @@ function showMenu(){
     '<div class="actions"><button class="btn big" id="m-levels">Все уровни</button><button class="btn big" id="m-bonus">🎁 Бонус '+memeCount()+'/'+MEMES.length+'</button></div>'+
     '<div class="actions"><button class="btn" id="m-shop">💎 Кристаллы · '+crystals()+'</button><button class="btn" id="m-help">Как играть</button></div>'+
     (playing?'<button class="btn" id="m-back">Вернуться к игре</button>':'')+
-    '<div class="actions" style="justify-content:center"><button class="ghost" id="m-support" type="button">Поддержка</button></div>',
+    '<div class="actions" style="justify-content:center"><button class="ghost" id="m-support" type="button">Поддержка</button></div>'+
+    '<p class="ver">Версия '+APP_VER+'</p>',
     ()=>{
       $('#m-theme').onclick=toggleTheme; syncThemeBtns();
       const c=$('#m-cont');
